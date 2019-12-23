@@ -9,6 +9,7 @@ objects:
 - kind: ServiceAccount
   apiVersion: v1
   metadata:
+    creationTimestamp: null
     labels:
       app: ${APPLICATION_NAME}
     name: ${APPLICATION_NAME}
@@ -18,6 +19,8 @@ objects:
     annotations:
       description: Exposes the database server
     name: ${APPLICATION_NAME}-postgresql
+    labels:
+      app: ${APPLICATION_NAME}
   spec:
     ports:
     - name: postgresql
@@ -66,6 +69,8 @@ objects:
             tcpSocket:
               port: 5432
             timeoutSeconds: 1
+            failureThreshold: 10
+            periodSeconds: 20
           name: postgresql
           ports:
           - containerPort: 5432
@@ -76,8 +81,9 @@ objects:
               - -i
               - -c
               - psql -h 127.0.0.1 -U ${POSTGRESQL_USER} -q -d ${POSTGRESQL_DATABASE} -c 'SELECT 1'
-            initialDelaySeconds: 5
+            initialDelaySeconds: 30
             timeoutSeconds: 1
+            failureThreshold: 10
           resources:
             limits:
               memory: 512Mi
@@ -86,7 +92,8 @@ objects:
             name: gogs-postgres-data
         volumes:
         - name: gogs-postgres-data
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: gogs-postgres-data
     triggers:
     - imageChangeParams:
         automatic: true
@@ -113,15 +120,13 @@ objects:
       port: 3000
       protocol: TCP
       targetPort: 3000
-    - name: 10022-tcp
-      port: 10022
-      protocol: TCP
-      targetPort: 10022
     selector:
       app: ${APPLICATION_NAME}
       deploymentconfig: ${APPLICATION_NAME}
     sessionAffinity: None
     type: ClusterIP
+  status:
+    loadBalancer: {}
 - kind: Route
   apiVersion: v1
   id: ${APPLICATION_NAME}-http
@@ -133,23 +138,6 @@ objects:
     name: ${APPLICATION_NAME}
   spec:
     host: ${HOSTNAME}
-    port:
-      targetPort: 3000-tcp
-    to:
-      name: ${APPLICATION_NAME}
-- kind: Route
-  apiVersion: v1
-  id: ${APPLICATION_NAME}-ssh
-  metadata:
-    annotations:
-      description: Route for application's ssh service.
-    labels:
-      app: ${APPLICATION_NAME}
-    name: ${APPLICATION_NAME}-ssh
-  spec:
-    host: secure${HOSTNAME}
-    port:
-      targetPort: 10022-tcp
     to:
       name: ${APPLICATION_NAME}
 - kind: DeploymentConfig
@@ -187,8 +175,6 @@ objects:
           ports:
           - containerPort: 3000
             protocol: TCP
-          - containerPort: 10022
-            protocol: TCP
           resources: {}
           terminationMessagePath: /dev/termination-log
           volumeMounts:
@@ -201,28 +187,29 @@ objects:
                 path: /
                 port: 3000
                 scheme: HTTP
-              initialDelaySeconds: 3
+              initialDelaySeconds: 40
               timeoutSeconds: 1
               periodSeconds: 20
               successThreshold: 1
-              failureThreshold: 3
+              failureThreshold: 10
           livenessProbe:
               httpGet:
                 path: /
                 port: 3000
                 scheme: HTTP
-              initialDelaySeconds: 3
+              initialDelaySeconds: 40
               timeoutSeconds: 1
               periodSeconds: 10
               successThreshold: 1
-              failureThreshold: 3
+              failureThreshold: 10
         dnsPolicy: ClusterFirst
         restartPolicy: Always
         securityContext: {}
         terminationGracePeriodSeconds: 30
         volumes:
         - name: gogs-data
-          emptyDir: {}
+          persistentVolumeClaim:
+            claimName: gogs-data
         - name: gogs-config
           configMap:
             name: gogs-config
@@ -251,12 +238,36 @@ objects:
     - name: "${GOGS_VERSION}"
       from:
         kind: DockerImage
-        name: docker.io/openshiftdemos/gogs:${GOGS_VERSION}
+        name: quay.io/siamaksade/gogs:${GOGS_VERSION}
       importPolicy: {}
       annotations:
         description: The Gogs git server docker image
         tags: gogs,go,golang
         version: "${GOGS_VERSION}"
+- kind: PersistentVolumeClaim
+  apiVersion: v1
+  metadata:
+    name: gogs-data
+    labels:
+      app: ${APPLICATION_NAME}
+  spec:
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: ${GOGS_VOLUME_CAPACITY}
+- kind: PersistentVolumeClaim
+  apiVersion: v1
+  metadata:
+    name: gogs-postgres-data
+    labels:
+      app: ${APPLICATION_NAME}
+  spec:
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: ${DB_VOLUME_CAPACITY}
 - kind: ConfigMap
   apiVersion: v1
   metadata:
@@ -280,9 +291,7 @@ objects:
 
       [server]
       ROOT_URL=http://${HOSTNAME}
-      SSH_DOMAIN=secure${HOSTNAME}
-      START_SSH_SERVER=true
-      SSH_LISTEN_PORT=10022
+      SSH_DOMAIN=${HOSTNAME}
 
       [security]
       INSTALL_LOCK = ${INSTALL_LOCK}
@@ -300,6 +309,14 @@ parameters:
 - description: 'Custom hostname for http service route.  Leave blank for default hostname, e.g.: <application-name>-<project>.<default-domain-suffix>'
   name: HOSTNAME
   required: true
+- description: Volume space available for data, e.g. 512Mi, 2Gi
+  name: GOGS_VOLUME_CAPACITY
+  required: true
+  value: 1Gi
+- description: Volume space available for postregs data, e.g. 512Mi, 2Gi
+  name: DB_VOLUME_CAPACITY
+  required: true
+  value: 1Gi
 - displayName: Database Username
   from: gogs
   value: gogs
@@ -323,11 +340,11 @@ parameters:
   value: 12MB
 - displayName: Database version (PostgreSQL)
   name: DATABASE_VERSION
-  value: "9.5"
+  value: "10"
 - name: GOGS_VERSION
   displayName: Gogs Version
   description: 'Version of the Gogs container image to be used (check the available version https://hub.docker.com/r/openshiftdemos/gogs/tags)'
-  value: "0.11.34"
+  value: "latest"
   required: true
 - name: INSTALL_LOCK
   displayName: Installation lock
