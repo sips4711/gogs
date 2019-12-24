@@ -154,6 +154,7 @@ objects:
       app.kubernetes.io/instance: ${APPLICATION_NAME}
       app.kubernetes.io/name: gogs
       app.kubernetes.io/part-of: ${APPLICATION_NAME}
+    name: ${APPLICATION_NAME}
   spec:
     replicas: 1
     selector:
