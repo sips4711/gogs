@@ -36,6 +36,10 @@ objects:
     name: ${APPLICATION_NAME}-postgresql
     labels:
       app: ${APPLICATION_NAME}
+      app.kubernetes.io/component: database
+      app.kubernetes.io/instance: ${APPLICATION_NAME}
+      app.kubernetes.io/name: ${APPLICATION_NAME}-postgresql
+      app.kubernetes.io/part-of: ${APPLICATION_NAME}
   spec:
     replicas: 1
     selector:
@@ -145,7 +149,11 @@ objects:
   metadata:
     labels:
       app: ${APPLICATION_NAME}
-    name: ${APPLICATION_NAME}
+      app.openshift.io/connects-to: ${APPLICATION_NAME}-postgresql
+      app.kubernetes.io/component: gogs
+      app.kubernetes.io/instance: ${APPLICATION_NAME}
+      app.kubernetes.io/name: gogs
+      app.kubernetes.io/part-of: ${APPLICATION_NAME}
   spec:
     replicas: 1
     selector:
