@@ -9,7 +9,6 @@ LABEL name="Gogs - Go Git Service" \
       summary="The goal of this project is to make the easiest, fastest, and most painless way of setting up a self-hosted Git service." \
       io.openshift.expose-services="3000,gogs" \
       io.openshift.tags="gogs" \
-      version="${GOGS_VERSION}" \
       release="1"
 
 ENV HOME=/var/lib/gogs
@@ -19,7 +18,7 @@ COPY ./root /
 RUN curl -L -o /etc/yum.repos.d/gogs.repo https://dl.packager.io/srv/pkgr/gogs/pkgr/installer/el/7.repo && \
     yum -y install epel-release && \
     yum -y --setopt=tsflags=nodocs install nss_wrapper gettext && \
-    curl -L -o /tmp/gogs.rpm  https://packager.io/gh/gogs/gogs/builds/$GOGS_BUILD/download/centos-7 && \
+    curl -L -o /tmp/gogs.rpm  https://packager.io/gh/gogs/gogs/builds/${GOGS_BUILD}/download/centos-7 && \
     yum -y localinstall /tmp/gogs.rpm && \
     yum -y clean all && \
     mkdir -p /var/lib/gogs
