@@ -1,5 +1,7 @@
 FROM centos:7
 
+ARG GOGS_BUILD=49
+
 LABEL name="Gogs - Go Git Service" \
       vendor="Gogs" \
       io.k8s.display-name="Gogs - Go Git Service" \
@@ -16,7 +18,9 @@ COPY ./root /
 
 RUN curl -L -o /etc/yum.repos.d/gogs.repo https://dl.packager.io/srv/pkgr/gogs/pkgr/installer/el/7.repo && \
     yum -y install epel-release && \
-    yum -y --setopt=tsflags=nodocs install gogs nss_wrapper gettext && \
+    yum -y --setopt=tsflags=nodocs install nss_wrapper gettext && \
+    curl -L -o /tmp/gogs.rpm  https://packager.io/gh/gogs/gogs/builds/$GOGS_BUILD/download/centos-7 && \
+    yum -y localinstall /tmp/gogs.rpm && \
     yum -y clean all && \
     mkdir -p /var/lib/gogs
 

@@ -31,8 +31,6 @@ objects:
 - kind: DeploymentConfig
   apiVersion: v1
   metadata:
-    annotations:
-      description: Defines how to deploy the database
     name: ${APPLICATION_NAME}-postgresql
     labels:
       app: ${APPLICATION_NAME}
@@ -112,9 +110,6 @@ objects:
 - kind: Service
   apiVersion: v1
   metadata:
-    annotations:
-      description: The Gogs server's http port
-      service.alpha.openshift.io/dependencies: '[{"name":"${APPLICATION_NAME}-postgresql","namespace":"","kind":"Service"}]'
     labels:
       app: ${APPLICATION_NAME}
     name: ${APPLICATION_NAME}
@@ -135,8 +130,6 @@ objects:
   apiVersion: v1
   id: ${APPLICATION_NAME}-http
   metadata:
-    annotations:
-      description: Route for application's http service.
     labels:
       app: ${APPLICATION_NAME}
     name: ${APPLICATION_NAME}
@@ -149,7 +142,6 @@ objects:
   metadata:
     labels:
       app: ${APPLICATION_NAME}
-      app.openshift.io/connects-to: ${APPLICATION_NAME}-postgresql
       app.kubernetes.io/component: gogs
       app.kubernetes.io/instance: ${APPLICATION_NAME}
       app.kubernetes.io/name: gogs
@@ -250,7 +242,6 @@ objects:
         name: quay.io/siamaksade/gogs:${GOGS_VERSION}
       importPolicy: {}
       annotations:
-        description: The Gogs git server docker image
         tags: gogs,go,golang
         version: "${GOGS_VERSION}"
 - kind: PersistentVolumeClaim
