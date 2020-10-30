@@ -6,32 +6,54 @@ metadata:
     tags: instant-app,gogs,go,golang
   name: gogs
 objects:
-- kind: ServiceAccount
-  apiVersion: v1
-  metadata:
-    creationTimestamp: null
-    labels:
-      app: ${APPLICATION_NAME}
-    name: ${APPLICATION_NAME}
-- kind: Service
-  apiVersion: v1
+- apiVersion: v1
+  kind: Secret
   metadata:
     annotations:
-      description: Exposes the database server
-    name: ${APPLICATION_NAME}-postgresql
-    labels:
-      app: ${APPLICATION_NAME}
+      template.openshift.io/expose-database_name: '{.data[''database-name'']}'
+      template.openshift.io/expose-password: '{.data[''database-password'']}'
+      template.openshift.io/expose-username: '{.data[''database-user'']}'
+    name: '${APPLICATION_NAME}-postgresql'
+  stringData:
+    database-name: '${DATABASE_NAME}'
+    database-password: '${DATABASE_PASSWORD}'
+    database-user: '${DATABASE_USER}'
+- apiVersion: v1
+  kind: Service
+  metadata:
+    annotations:
+      template.openshift.io/expose-uri: >-
+        postgres://{.spec.clusterIP}:{.spec.ports[?(.name=="postgresql")].port}
+    name: '${APPLICATION_NAME}-postgresql'
   spec:
     ports:
-    - name: postgresql
-      port: 5432
-      targetPort: 5432
+      - name: postgresql
+        nodePort: 0
+        port: 5432
+        protocol: TCP
+        targetPort: 5432
     selector:
-      name: ${APPLICATION_NAME}-postgresql
-- kind: DeploymentConfig
-  apiVersion: v1
+      name: '${APPLICATION_NAME}-postgresql'
+    sessionAffinity: None
+    type: ClusterIP
+  status:
+    loadBalancer: {}
+- apiVersion: v1
+  kind: PersistentVolumeClaim
   metadata:
-    name: ${APPLICATION_NAME}-postgresql
+    name: '${APPLICATION_NAME}-postgresql'
+  spec:
+    accessModes:
+      - ReadWriteOnce
+    resources:
+      requests:
+        storage: '${DB_VOLUME_CAPACITY}'
+- apiVersion: v1
+  kind: DeploymentConfig
+  metadata:
+    annotations:
+      template.alpha.openshift.io/wait-for-ready: 'true'
+    name: '${APPLICATION_NAME}-postgresql'
     labels:
       app: ${APPLICATION_NAME}
       app.kubernetes.io/component: database
@@ -41,72 +63,85 @@ objects:
   spec:
     replicas: 1
     selector:
-      name: ${APPLICATION_NAME}-postgresql
+      name: '${APPLICATION_NAME}-postgresql'
     strategy:
       type: Recreate
     template:
       metadata:
         labels:
-          name: ${APPLICATION_NAME}-postgresql
-        name: ${APPLICATION_NAME}-postgresql
+          name: '${APPLICATION_NAME}-postgresql'
       spec:
-        serviceAccountName: ${APPLICATION_NAME}
         containers:
-        - env:
-          - name: POSTGRESQL_USER
-            value: ${DATABASE_USER}
-          - name: POSTGRESQL_PASSWORD
-            value: ${DATABASE_PASSWORD}
-          - name: POSTGRESQL_DATABASE
-            value: ${DATABASE_NAME}
-          - name: POSTGRESQL_MAX_CONNECTIONS
-            value: ${DATABASE_MAX_CONNECTIONS}
-          - name: POSTGRESQL_SHARED_BUFFERS
-            value: ${DATABASE_SHARED_BUFFERS}
-          - name: POSTGRESQL_ADMIN_PASSWORD
-            value: ${DATABASE_ADMIN_PASSWORD}
-          image: ' '
-          livenessProbe:
-            initialDelaySeconds: 30
-            tcpSocket:
-              port: 5432
-            timeoutSeconds: 1
-            failureThreshold: 10
-            periodSeconds: 20
-          name: postgresql
-          ports:
-          - containerPort: 5432
-          readinessProbe:
-            exec:
-              command:
-              - /bin/sh
-              - -i
-              - -c
-              - psql -h 127.0.0.1 -U ${POSTGRESQL_USER} -q -d ${POSTGRESQL_DATABASE} -c 'SELECT 1'
-            initialDelaySeconds: 30
-            timeoutSeconds: 1
-            failureThreshold: 10
-          resources:
-            limits:
-              memory: 512Mi
-          volumeMounts:
-          - mountPath: /var/lib/pgsql/data
-            name: gogs-postgres-data
+          - resources:
+              limits:
+                memory: '256Mi'
+            readinessProbe:
+              exec:
+                command:
+                  - /usr/libexec/check-container
+              initialDelaySeconds: 5
+              timeoutSeconds: 1
+            terminationMessagePath: /dev/termination-log
+            name: postgresql
+            livenessProbe:
+              exec:
+                command:
+                  - /usr/libexec/check-container
+                  - '--live'
+              initialDelaySeconds: 120
+              timeoutSeconds: 10
+            env:
+              - name: POSTGRESQL_USER
+                valueFrom:
+                  secretKeyRef:
+                    key: database-user
+                    name: '${APPLICATION_NAME}-postgresql'
+              - name: POSTGRESQL_PASSWORD
+                valueFrom:
+                  secretKeyRef:
+                    key: database-password
+                    name: '${APPLICATION_NAME}-postgresql'
+              - name: POSTGRESQL_DATABASE
+                valueFrom:
+                  secretKeyRef:
+                    key: database-name
+                    name: '${APPLICATION_NAME}-postgresql'
+            securityContext:
+              capabilities: {}
+              privileged: false
+            ports:
+              - containerPort: 5432
+                protocol: TCP
+            imagePullPolicy: IfNotPresent
+            volumeMounts:
+              - mountPath: /var/lib/pgsql/data
+                name: '${APPLICATION_NAME}-postgresql-data'
+            capabilities: {}
+            image: ' '
+        dnsPolicy: ClusterFirst
+        restartPolicy: Always
         volumes:
-        - name: gogs-postgres-data
-          persistentVolumeClaim:
-            claimName: gogs-postgres-data
+          - name: '${APPLICATION_NAME}-postgresql-data'
+            persistentVolumeClaim:
+              claimName: '${APPLICATION_NAME}-postgresql'
     triggers:
-    - imageChangeParams:
-        automatic: true
-        containerNames:
-        - postgresql
-        from:
-          kind: ImageStreamTag
-          name: postgresql:${DATABASE_VERSION}
-          namespace: openshift
-      type: ImageChange
-    - type: ConfigChange
+      - imageChangeParams:
+          automatic: true
+          containerNames:
+            - postgresql
+          from:
+            kind: ImageStreamTag
+            name: 'postgresql:${DATABASE_VERSION}'
+            namespace: 'openshift'
+          lastTriggeredImage: ''
+        type: ImageChange
+      - type: ConfigChange
+- kind: ServiceAccount
+  apiVersion: v1
+  metadata:
+    labels:
+      app: ${APPLICATION_NAME}
+    name: ${APPLICATION_NAME}
 - kind: Service
   apiVersion: v1
   metadata:
@@ -124,8 +159,6 @@ objects:
       deploymentconfig: ${APPLICATION_NAME}
     sessionAffinity: None
     type: ClusterIP
-  status:
-    loadBalancer: {}
 - kind: Route
   apiVersion: v1
   id: ${APPLICATION_NAME}-http
@@ -210,10 +243,10 @@ objects:
         volumes:
         - name: gogs-data
           persistentVolumeClaim:
-            claimName: gogs-data
+            claimName: ${APPLICATION_NAME}-data
         - name: gogs-config
           configMap:
-            name: gogs-config
+            name: ${APPLICATION_NAME}-config
             items:
               - key: app.ini
                 path: app.ini
@@ -247,7 +280,7 @@ objects:
 - kind: PersistentVolumeClaim
   apiVersion: v1
   metadata:
-    name: gogs-data
+    name: ${APPLICATION_NAME}-data
     labels:
       app: ${APPLICATION_NAME}
   spec:
@@ -256,22 +289,10 @@ objects:
     resources:
       requests:
         storage: ${GOGS_VOLUME_CAPACITY}
-- kind: PersistentVolumeClaim
-  apiVersion: v1
-  metadata:
-    name: gogs-postgres-data
-    labels:
-      app: ${APPLICATION_NAME}
-  spec:
-    accessModes:
-      - ReadWriteOnce
-    resources:
-      requests:
-        storage: ${DB_VOLUME_CAPACITY}
 - kind: ConfigMap
   apiVersion: v1
   metadata:
-    name: gogs-config
+    name: ${APPLICATION_NAME}-config
     labels:
       app: ${APPLICATION_NAME}
   data:
@@ -328,19 +349,9 @@ parameters:
 - displayName: Database Name
   name: DATABASE_NAME
   value: gogs
-- displayName: Database Admin Password
-  from: '[a-zA-Z0-9]{8}'
-  generate: expression
-  name: DATABASE_ADMIN_PASSWORD
-- displayName: Maximum Database Connections
-  name: DATABASE_MAX_CONNECTIONS
-  value: "100"
-- displayName: Shared Buffer Amount
-  name: DATABASE_SHARED_BUFFERS
-  value: 12MB
 - displayName: Database version (PostgreSQL)
   name: DATABASE_VERSION
-  value: "10"
+  value: "12-el8"
 - name: GOGS_VERSION
   displayName: Gogs Version
   description: 'Version of the Gogs container image to be used (check the available version https://hub.docker.com/r/openshiftdemos/gogs/tags)'
