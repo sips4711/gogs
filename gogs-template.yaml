@@ -351,7 +351,7 @@ parameters:
   value: gogs
 - displayName: Database version (PostgreSQL)
   name: DATABASE_VERSION
-  value: "12-el8"
+  value: "latest"
 - name: GOGS_VERSION
   displayName: Gogs Version
   description: 'Version of the Gogs container image to be used (check the available version https://hub.docker.com/r/openshiftdemos/gogs/tags)'
