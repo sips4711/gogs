@@ -1,6 +1,6 @@
 FROM centos:7
 
-ARG GOGS_BUILD=49
+ARG GOGS_BUILD=370
 
 LABEL name="Gogs - Go Git Service" \
       vendor="Gogs" \
