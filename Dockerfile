@@ -14,6 +14,8 @@ LABEL name="Gogs - Go Git Service" \
 ENV HOME=/var/lib/gogs
 
 COPY ./root /
+ADD etc-gogs-conf/app.ini /etc/gogs/conf/app.ini
+
 
 RUN curl -L -o /etc/yum.repos.d/gogs.repo https://dl.packager.io/srv/pkgr/gogs/pkgr/installer/el/7.repo && \
     yum -y install epel-release && \
